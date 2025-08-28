@@ -7,12 +7,12 @@ import os
 app = FastAPI()
 
 app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.get("/")
 def read_root():
@@ -22,15 +22,18 @@ def read_root():
 async def upload_image(file: UploadFile = File(...)):
     try:
         contents = await file.read()
+        
+        # Vercel Blobにファイルをアップロード (body= を削除)
         blob_result = put(
             file.filename,
-            body=contents,
+            contents, # 'body='を削除しました
             add_random_suffix=True,
             access='public'
         )
+        
         return JSONResponse(
             status_code=200,
-                content={
+            content={
                 "message": "Image uploaded successfully!",
                 "url": blob_result['url']
             }
@@ -40,4 +43,3 @@ async def upload_image(file: UploadFile = File(...)):
             status_code=500,
             content={"message": f"An error occurred: {str(e)}"}
         )
-    
