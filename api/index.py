@@ -164,11 +164,15 @@ async def create_itinerary(request: Request):
 @app.get("/nearby-parking/")
 async def get_nearby_parking(lat: float = Query(...), lon: float = Query(...)):
     try:
-        # Overpass APIで周辺の駐車場を検索 (半径500m)
+        # Overpass APIで周辺の駐車場を検索 (半径500m) - 点(node)とエリア(way)の両方を検索
         overpass_query = f"""
         [out:json];
-        node(around:500,{lat},{lon})[amenity=parking];
-        out;
+        (
+          node(around:500,{lat},{lon})[amenity=parking];
+          way(around:500,{lat},{lon})[amenity=parking];
+          relation(around:500,{lat},{lon})[amenity=parking];
+        );
+        out center;
         """
         encoded_query = urllib.parse.quote(overpass_query)
         overpass_url = f"https://overpass-api.de/api/interpreter?data={encoded_query}"
@@ -181,10 +185,11 @@ async def get_nearby_parking(lat: float = Query(...), lon: float = Query(...)):
         parking_lots = []
         for element in parking_data.get('elements', []):
             tags = element.get('tags', {})
+            center = element.get('center', {})
             parking_lots.append({
                 "name": tags.get('name', '名称不明'),
-                "lat": element.get('lat'),
-                "lon": element.get('lon')
+                "lat": element.get('lat') or center.get('lat'),
+                "lon": element.get('lon') or center.get('lon')
             })
 
         if not parking_lots:
