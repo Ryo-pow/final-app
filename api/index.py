@@ -164,7 +164,7 @@ async def create_itinerary(request: Request):
 @app.get("/nearby-parking/")
 async def get_nearby_parking(lat: float = Query(...), lon: float = Query(...)):
     try:
-        overpass_query = f"[out:json];(node(around:500,{lat},{lon})[amenity=parking];way(around:500,{lat},{lon})[amenity=parking];relation(around:500,{lat},{lon})[amenity=parking];);out center;"
+        overpass_query = f"[out:json];(node(around:1000,{lat},{lon})[amenity=parking];way(around:1000,{lat},{lon})[amenity=parking];relation(around:1000,{lat},{lon})[amenity=parking];);out center;"
         overpass_url = "https://overpass-api.de/api/interpreter"
         params = {"data": overpass_query}
 
