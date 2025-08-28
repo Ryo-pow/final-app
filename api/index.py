@@ -23,12 +23,15 @@ async def upload_image(file: UploadFile = File(...)):
     try:
         contents = await file.read()
         
-        # Vercel Blobにファイルをアップロード (body= を削除)
+        # Vercel Blobにファイルをアップロード
+        # オプションを一つの辞書にまとめて渡すように修正
         blob_result = put(
             file.filename,
-            contents, # 'body='を削除しました
-            add_random_suffix=True,
-            access='public'
+            contents,
+            options={
+                'add_random_suffix': True,
+                'access': 'public'
+            }
         )
         
         return JSONResponse(
