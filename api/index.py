@@ -165,15 +165,7 @@ async def create_itinerary(request: Request):
 async def get_nearby_parking(lat: float = Query(...), lon: float = Query(...)):
     try:
         # Overpass APIで周辺の駐車場を検索 (半径500m) - 点(node)とエリア(way)の両方を検索
-        overpass_query = f"""
-        [out:json];
-        (
-          node(around:500,{lat},{lon})[amenity=parking];
-          way(around:500,{lat},{lon})[amenity=parking];
-          relation(around:500,{lat},{lon})[amenity=parking];
-        );
-        out center;
-        """
+        overpass_query = f"[out:json];(node(around:500,{lat},{lon})[amenity=parking];way(around:500,{lat},{lon})[amenity=parking];relation(around:500,{lat},{lon})[amenity=parking];);out center;"
         encoded_query = urllib.parse.quote(overpass_query)
         overpass_url = f"https://overpass-api.de/api/interpreter?data={encoded_query}"
 
