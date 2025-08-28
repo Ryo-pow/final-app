@@ -65,12 +65,8 @@ def ai_search(query: str = Query(...)):
 
 # --- AI旅行プラン最適化機能 ---
 @app.get("/plan-trip/")
-async def plan_trip(
-    destinations: str = Query(..., description="カンマ区切りの目的地リスト"),
-    start_lat: float = Query(..., description="出発点の緯度"),
-    start_lon: float = Query(..., description="出発点の経度")
-):
-    return {"message": "Plan trip endpoint is working!"}
+def plan_trip():
+    return {"message": "Simple plan trip endpoint is working!"}
 
 # --- 画像アップロード機能 ---
 @app.post("/upload-image/")
