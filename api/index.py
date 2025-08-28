@@ -32,6 +32,10 @@ app.add_middleware(
 def read_root():
     return {"Hello": "World"}
 
+@app.get("/test-route/")
+def test_route():
+    return {"message": "Test route is working!"}
+
 # --- 天気予報機能 ---
 @app.get("/weather/")
 def get_weather(latitude: float = Query(...), longitude: float = Query(...)):
