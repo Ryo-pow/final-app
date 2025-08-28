@@ -59,14 +59,14 @@ def ai_search(query: str = Query(...)):
         # ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
         # ↓↓↓ この部分を、最強の文字化け対策コードに変更しました！ ↓↓↓
         
-        # 1. まず、Pythonの辞書データを作ります
         response_data = {"answer": response.text}
-        
-        # 2. それを、日本語を正しく扱えるJSON形式の文字列に変換します
         json_string = json.dumps(response_data, ensure_ascii=False)
         
-        # 3. 最後に、「このデータはUTF-8の日本語ですよ」という最強のラベルを付けて返します
-        return Response(content=json_string, media_type="application/json; charset=utf-8")
+        # 文字列を、UTF-8形式のバイトデータに手動で変換します
+        utf8_bytes = json_string.encode('utf-8')
+        
+        # 変換したバイトデータを、UTF-8のラベルを付けてそのまま返します
+        return Response(content=utf8_bytes, media_type="application/json; charset=utf-8")
         
         # ↑↑↑ この部分を、最強の文字化け対策コードに変更しました！ ↑↑↑
         # ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
