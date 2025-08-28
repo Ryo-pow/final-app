@@ -4,8 +4,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from vercel_blob import put
 import os
 import requests
-from tavily import TavilyClient      # Tavilyを使うために追加
-import google.generativeai as genai  # Geminiを使うために追加
+from tavily import TavilyClient
+import google.generativeai as genai
 
 # --- APIキーをVercelの金庫から読み込む ---
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
@@ -42,17 +42,11 @@ def get_weather(latitude: float = Query(...), longitude: float = Query(...)):
     except Exception as e:
         return JSONResponse(status_code=500, content={"message": f"An error occurred: {str(e)}"})
 
-# --- ここから新しいAI検索機能 ---
+# --- AI検索機能 ---
 @app.get("/ai-search/")
 def ai_search(query: str = Query(...)):
-    """
-    ユーザーの質問に基づいてTavilyでWeb検索し、Geminiで要約して回答する
-    """
     try:
-        # 1. TavilyでWeb情報を検索
         context = tavily.search(query=query, search_depth="advanced")
-        
-        # 2. 検索結果をGeminiに渡して、要約させるための指示（プロンプト）を作成
         prompt = f"""
         以下の検索結果を参考にして、ユーザーの質問に日本語で分かりやすく答えてください。
         
@@ -60,15 +54,16 @@ def ai_search(query: str = Query(...)):
         
         検索結果: {context}
         """
-        
-        # 3. Geminiに回答を生成させる
         response = model.generate_content(prompt)
         
-        return JSONResponse(status_code=200, content={"answer": response.text})
+        # ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+        # ↓↓↓ この一行を変更しました！ ↓↓↓
+        return {"answer": response.text}
+        # ↑↑↑ この一行を変更しました！ ↑↑↑
+        # ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
 
     except Exception as e:
         return JSONResponse(status_code=500, content={"message": f"An error occurred: {str(e)}"})
-# --- ここまで新しいAI検索機能 ---
 
 # --- 画像アップロード機能 ---
 @app.post("/upload-image/")
