@@ -56,20 +56,9 @@ def ai_search(query: str = Query(...)):
         """
         response = model.generate_content(prompt)
         
-        # ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
-        # ↓↓↓ この部分を、最強の文字化け対策コードに変更しました！ ↓↓↓
-        
-        response_data = {"answer": response.text}
-        json_string = json.dumps(response_data, ensure_ascii=False)
-        
-        # 文字列を、UTF-8形式のバイトデータに手動で変換します
-        utf8_bytes = json_string.encode('utf-8')
-        
-        # 変換したバイトデータを、UTF-8のラベルを付けてそのまま返します
-        return Response(content=utf8_bytes, media_type="application/json; charset=utf-8")
-        
-        # ↑↑↑ この部分を、最強の文字化け対策コードに変更しました！ ↑↑↑
-        # ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+        # FastAPIのJSONResponseは、自動的にUTF-8へエンコードし、適切なContent-Typeヘッダーを付与します。
+        # これにより、手動でのエンコード処理が不要になり、コードがシンプルになります。
+        return JSONResponse(content={"answer": response.text})
 
     except Exception as e:
         return JSONResponse(status_code=500, content={"message": f"An error occurred: {str(e)}"})
