@@ -1,17 +1,19 @@
-from fastapi import FastAPI, File, UploadFile, Query
+# Responseクラスとjsonライブラリを新しくインポートします
+from fastapi import FastAPI, File, UploadFile, Query, Response
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+import json
+
 from vercel_blob import put
 import os
 import requests
 from tavily import TavilyClient
 import google.generativeai as genai
 
-# --- APIキーをVercelの金庫から読み込む ---
+# --- APIキーの設定 ---
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 TAVILY_API_KEY = os.environ.get("TAVILY_API_KEY")
 
-# --- 各サービスを使えるように設定 ---
 genai.configure(api_key=GEMINI_API_KEY)
 tavily = TavilyClient(api_key=TAVILY_API_KEY)
 model = genai.GenerativeModel('gemini-1.5-flash')
@@ -49,17 +51,24 @@ def ai_search(query: str = Query(...)):
         context = tavily.search(query=query, search_depth="advanced")
         prompt = f"""
         以下の検索結果を参考にして、ユーザーの質問に日本語で分かりやすく答えてください。
-        
         ユーザーの質問: {query}
-        
         検索結果: {context}
         """
         response = model.generate_content(prompt)
         
         # ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
-        # ↓↓↓ この一行を変更しました！ ↓↓↓
-        return {"answer": response.text}
-        # ↑↑↑ この一行を変更しました！ ↑↑↑
+        # ↓↓↓ この部分を、最強の文字化け対策コードに変更しました！ ↓↓↓
+        
+        # 1. まず、Pythonの辞書データを作ります
+        response_data = {"answer": response.text}
+        
+        # 2. それを、日本語を正しく扱えるJSON形式の文字列に変換します
+        json_string = json.dumps(response_data, ensure_ascii=False)
+        
+        # 3. 最後に、「このデータはUTF-8の日本語ですよ」という最強のラベルを付けて返します
+        return Response(content=json_string, media_type="application/json; charset=utf-8")
+        
+        # ↑↑↑ この部分を、最強の文字化け対策コードに変更しました！ ↑↑↑
         # ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
 
     except Exception as e:
