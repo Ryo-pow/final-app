@@ -6,6 +6,7 @@ import json
 import os
 import asyncio
 import httpx
+import urllib.parse
 
 from vercel_blob import put
 from tavily import TavilyClient
@@ -145,7 +146,7 @@ async def create_itinerary(request: Request):
         # 指示
         これらの情報に基づき、日本国内を移動するための、最も効率的な1日の観光プランを日本語で作成してください。
         ユーザー指定の滞在時間を考慮して、現実的なタイムスケジュール（例: 10:00-10:30）を提案してください。
-        一般的な交通渋滞（時間帯や日付）や天候、駐車の難易度なども考慮し、各区間で「車で移動」すべきか、「近くの駐車場に停めて徒歩で移動」すべきかを判断してください。
+        一般的な交通渋滞（時間帯や日付）や天候、駐車の難易度などを考慮し、各区間で「車で移動」すべきか、「近くの駐車場に停めて徒歩で移動」すべきかを判断してください。
         
         # 出力形式のルール
         - プランは訪問順に、タイムスケジュールを含めてリスト形式で出力してください。
@@ -158,6 +159,61 @@ async def create_itinerary(request: Request):
 
     except Exception as e:
         return JSONResponse(status_code=500, content={"message": f"An error occurred: {str(e)}"})
+
+# --- AIパーキングアシスタント機能 ---
+@app.get("/nearby-parking/")
+async def get_nearby_parking(lat: float = Query(...), lon: float = Query(...)):
+    try:
+        # Overpass APIで周辺の駐車場を検索 (半径500m)
+        overpass_query = f"""
+        [out:json];
+        node(around:500,{lat},{lon})[amenity=parking];
+        out;
+        """
+        encoded_query = urllib.parse.quote(overpass_query)
+        overpass_url = f"https://overpass-api.de/api/interpreter?data={encoded_query}"
+
+        async with httpx.AsyncClient() as client:
+            response = await client.get(overpass_url)
+            response.raise_for_status()
+            parking_data = response.json()
+
+        parking_lots = []
+        for element in parking_data.get('elements', []):
+            tags = element.get('tags', {})
+            parking_lots.append({
+                "name": tags.get('name', '名称不明'),
+                "lat": element.get('lat'),
+                "lon": element.get('lon')
+            })
+
+        if not parking_lots:
+            return JSONResponse(content={"message": "周辺に駐車場が見つかりませんでした。", "parking_lots": []})
+
+        # AIに分析を依頼
+        prompt = f"""
+        # 役割
+        あなたは、日本の駐車事情に詳しい、親切なアシスタントです。
+
+        # 状況
+        ユーザーは、緯度:{lat}, 経度:{lon} の地点へ車で向かおうとしています。
+        周辺の駐車場リストは以下の通りです。
+        {parking_lots}
+
+        # 指示
+        これらの情報と、あなたが知っているその地域の一般的な駐車場の混雑具合や料金の傾向、道の広さなどを考慮して、ユーザーに役立つ駐車戦略をアドバイスしてください。
+        - どの駐車場が特におすすめか、その理由は何か。
+        - 週末や特定の時間帯に避けるべき駐車場はあるか。
+        - 何か注意すべき点（最大料金の有無、道の狭さなど）はあるか。
+        具体的で、現実に役立つ、親切なアドバイスを日本語でお願いします。
+        """
+        
+        ai_response = await model.generate_content_async(prompt)
+        return JSONResponse(content={"parking_lots": parking_lots, "advice": ai_response.text})
+
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"message": f"An error occurred: {str(e)}"})
+
 
 # --- 画像アップロード機能 ---
 @app.post("/upload-image/")
