@@ -160,17 +160,16 @@ async def create_itinerary(request: Request):
     except Exception as e:
         return JSONResponse(status_code=500, content={"message": f"An error occurred: {str(e)}"})
 
-# --- AIパーキングアシスタント機能 ---
+# --- AIパーキングアシスタント機能 (バグ修正版) ---
 @app.get("/nearby-parking/")
 async def get_nearby_parking(lat: float = Query(...), lon: float = Query(...)):
     try:
-        # Overpass APIで周辺の駐車場を検索 (半径500m) - 点(node)とエリア(way)の両方を検索
         overpass_query = f"[out:json];(node(around:500,{lat},{lon})[amenity=parking];way(around:500,{lat},{lon})[amenity=parking];relation(around:500,{lat},{lon})[amenity=parking];);out center;"
-        encoded_query = urllib.parse.quote(overpass_query)
-        overpass_url = f"https://overpass-api.de/api/interpreter?data={encoded_query}"
+        overpass_url = "https://overpass-api.de/api/interpreter"
+        params = {"data": overpass_query}
 
         async with httpx.AsyncClient() as client:
-            response = await client.get(overpass_url)
+            response = await client.get(overpass_url, params=params, timeout=30.0)
             response.raise_for_status()
             parking_data = response.json()
 
