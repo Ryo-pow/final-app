@@ -1,5 +1,5 @@
 # Responseクラスとjsonライブラリを新しくインポートします
-from fastapi import FastAPI, File, UploadFile, Query, Response
+from fastapi import FastAPI, File, UploadFile, Query, Response, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import json
@@ -55,9 +55,6 @@ def ai_search(query: str = Query(...)):
         検索結果: {context}
         """
         response = model.generate_content(prompt)
-        
-        # FastAPIのJSONResponseは、自動的にUTF-8へエンコードし、適切なContent-Typeヘッダーを付与します。
-        # これにより、手動でのエンコード処理が不要になり、コードがシンプルになります。
         return JSONResponse(content={"answer": response.text})
 
     except Exception as e:
@@ -65,20 +62,26 @@ def ai_search(query: str = Query(...)):
 
 # --- AI旅行プラン最適化機能 ---
 @app.get("/create-itinerary/")
-async def create_itinerary(
-    destinations: str = Query(..., description="カンマ区切りの目的地リスト"),
-    start_lat: float = Query(..., description="出発点の緯度"),
-    start_lon: float = Query(..., description="出発点の経度")
-):
+async def create_itinerary(request: Request):
     try:
+        # FastAPIのQuery(...)を使わず、手動でパラメータを解析
+        params = request.query_params
+        destinations = params.get("destinations")
+        start_lat_str = params.get("start_lat")
+        start_lon_str = params.get("start_lon")
+
+        if not all([destinations, start_lat_str, start_lon_str]):
+            return JSONResponse(status_code=400, content={"message": "Missing required query parameters: destinations, start_lat, start_lon"})
+
+        start_lat = float(start_lat_str)
+        start_lon = float(start_lon_str)
+
         destination_names = [dest.strip() for dest in destinations.split(',')]
         
-        # --- ステップ1: 全地点の緯度・経度を特定 ---
-        headers = {'User-Agent': 'FinalApp/1.0 (ryo-pow)'} # Nominatimのポリシーに従いUser-Agentを設定
+        headers = {'User-Agent': 'FinalApp/1.0 (ryo-pow)'}
         locations = [{"name": "現在地", "lat": start_lat, "lon": start_lon}]
         
         for name in destination_names:
-            # 日本国内に絞って検索
             search_query = f"{name}, 日本"
             nominatim_url = f"https://nominatim.openstreetmap.org/search?q={search_query}&format=json&limit=1"
             response = requests.get(nominatim_url, headers=headers)
@@ -93,22 +96,19 @@ async def create_itinerary(
                 "lon": float(geo_data[0]["lon"])
             })
 
-        # --- ステップ2: 天気予報の取得 ---
-        first_dest = locations[1] # 最初の目的地
+        first_dest = locations[1]
         weather_url = f"https://api.open-meteo.com/v1/forecast?latitude={first_dest['lat']}&longitude={first_dest['lon']}&daily=weathercode,temperature_2m_max,precipitation_probability_max&timezone=Asia%2FTokyo"
         weather_response = requests.get(weather_url)
         weather_response.raise_for_status()
         weather_data = weather_response.json().get('daily', {})
         weather_info = f"天気予報: 最高気温 {weather_data.get('temperature_2m_max', ['N/A'])[0]}℃, 降水確率 {weather_data.get('precipitation_probability_max', ['N/A'])[0]}%"
 
-        # --- ステップ3: 各地点間の移動時間を計算 ---
         coords_str = ";".join([f"{loc['lon']},{loc['lat']}" for loc in locations])
         osrm_url = f"http://router.project-osrm.org/table/v1/driving/{coords_str}"
         osrm_response = requests.get(osrm_url)
         osrm_response.raise_for_status()
         durations_matrix = osrm_response.json()['durations']
 
-        # --- ステップ4: AIへの「超・詳細な指示」 ---
         prompt = f"""
         # 役割
         あなたは日本の交通事情と気象に詳しい、最高の旅行プランナーです。
