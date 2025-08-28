@@ -3,3 +3,5 @@ uvicorn==0.29.0
 vercel-blob==0.4.2
 python-multipart==0.0.9
 requests
+google-generativeai
+tavily-python
