@@ -7,14 +7,32 @@ import os
 import asyncio
 import httpx
 import urllib.parse
+import logging # Add this line
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 from vercel_blob import put
 from tavily import TavilyClient
 import google.generativeai as genai
+from dotenv import load_dotenv # Add this line
+
+load_dotenv() # Add this line
 
 # --- APIキーの設定 ---
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-TAVILY_API_KEY = os.environ.get("TAVILY_API_KEY")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY") # Corrected
+TAVILY_API_KEY = os.environ.get("TAVILY_API_KEY") # Corrected
+
+if GEMINI_API_KEY:
+    print("hogehoge",GEMINI_API_KEY)
+    logging.info("GEMINI_API_KEY loaded successfully.")
+else:
+    logging.warning("GEMINI_API_KEY not found or is empty.")
+
+if TAVILY_API_KEY:
+    logging.info("TAVILY_API_KEY loaded successfully.")
+else:
+    logging.warning("TAVILY_API_KEY not found or is empty.")
 
 genai.configure(api_key=GEMINI_API_KEY)
 tavily = TavilyClient(api_key=TAVILY_API_KEY)
@@ -65,31 +83,45 @@ async def ai_search(query: str = Query(...)):
 
 # --- AI旅行プラン最適化機能 (最終決定版) ---
 @app.get("/create-itinerary/")
-async def create_itinerary(request: Request):
+async def create_itinerary(
+    destinations: str = Query(...),
+    date: str = Query(...),
+    durations: str = Query(...),
+    start_lat: float = Query(...),
+    start_lon: float = Query(...),
+):
     try:
-        params = request.query_params
-        destinations = params.get("destinations")
-        date = params.get("date")
-        durations_str = params.get("durations")
-        start_lat_str = params.get("start_lat")
-        start_lon_str = params.get("start_lon")
+        # Parameters are now directly available as function arguments
+        # No need for request.query_params or params.get()
 
-        if not all([destinations, date, durations_str, start_lat_str, start_lon_str]):
+        # Convert durations string to list of ints
+        durations_list = [int(d.strip()) for d in durations.split(',')]
+
+        # Convert destinations string to list of names
+        destination_names = [dest.strip() for dest in destinations.split(',')]
+
+        print(f"DEBUG: destinations received: '{destinations}'") # 追加
+        print(f"DEBUG: destination_names: {destination_names}, len: {len(destination_names)}") # 追加
+        print(f"DEBUG: durations received: '{durations}'") # 追加
+        print(f"DEBUG: durations_list: {durations_list}, len: {len(durations_list)}") # 追加
+
+        if not all([destinations, date, durations, start_lat, start_lon]): # Check for empty strings/None for required fields
             return JSONResponse(status_code=400, content={"message": "Missing required query parameters: destinations, date, durations, start_lat, start_lon"})
 
-        start_lat = float(start_lat_str)
-        start_lon = float(start_lon_str)
-        destination_names = [dest.strip() for dest in destinations.split(',')]
-        durations = [int(d.strip()) for d in durations_str.split(',')]
-
-        if len(destination_names) != len(durations):
+        if len(destination_names) != len(durations_list):
             return JSONResponse(status_code=400, content={"message": "The number of destinations and durations must be the same."})
 
         headers = {'User-Agent': 'FinalApp/1.0 (ryo-pow)'}
         locations = [{"name": "現在地", "lat": start_lat, "lon": start_lon}]
         dest_details = []
 
-        async with httpx.AsyncClient() as client:
+        
+
+        headers = {'User-Agent': 'FinalApp/1.0 (ryo-pow)'}
+        locations = [{"name": "現在地", "lat": start_lat, "lon": start_lon}]
+        dest_details = []
+
+        async with httpx.AsyncClient(timeout=30.0) as client: # timeout=30.0 を追加
             geocoding_tasks = []
             for name in destination_names:
                 search_query = f"{name}, 日本"
@@ -107,7 +139,7 @@ async def create_itinerary(request: Request):
                 lat = float(geo_data[0]["lat"])
                 lon = float(geo_data[0]["lon"])
                 locations.append({"name": destination_names[i], "lat": lat, "lon": lon})
-                dest_details.append({"name": destination_names[i], "duration_minutes": durations[i]})
+                dest_details.append({"name": destination_names[i], "duration_minutes": durations_list[i]})
 
             first_dest = locations[1]
             weather_url = f"https://api.open-meteo.com/v1/forecast?latitude={first_dest['lat']}&longitude={first_dest['lon']}&daily=weathercode,temperature_2m_max,precipitation_probability_max&timezone=Asia%2FTokyo&start_date={date}&end_date={date}"
@@ -131,34 +163,39 @@ async def create_itinerary(request: Request):
             durations_walking_matrix = osrm_walking_response.json()['durations']
 
         prompt = f"""
-        # 役割
-        あなたは、車と徒歩を組み合わせた旅行計画の達人です。
+        あなたは旅行プランナーAIです。
 
-        # 提供データ
-        1. 目的地と希望滞在時間（分）のリスト: {dest_details}
-        2. 旅行日: {date}
-        3. その日の天気: {weather_info}
-        4. 全地点のリスト（インデックス0は現在地）: {[loc['name'] for loc in locations]}
-        5. 車での各地点間の移動時間（秒）テーブル: {durations_driving_matrix}
-        6. 徒歩での各地点間の移動時間（秒）テーブル: {durations_walking_matrix}
-           (移動時間テーブルのインデックスは、全地点リストのインデックスに対応します)
+以下の旅行情報と制約に従って、各訪問ステップを「指定された順番のキー構成」で有効なJSONファイル形式で出力してください。説明やコメントは禁止です。出力は純粋なJSON配列で返してください。コードブロックも不要です。
 
-        # 指示
-        これらの情報に基づき、日本国内を移動するための、最も効率的な1日の観光プランを日本語で作成してください。
-        ユーザー指定の滞在時間を考慮して、現実的なタイムスケジュール（例: 10:00-10:30）を提案してください。
-        一般的な交通渋滞（時間帯や日付）や天候、駐車の難易度などを考慮し、各区間で「車で移動」すべきか、「近くの駐車場に停めて徒歩で移動」すべきかを判断してください。
-        
-        # 出力形式のルール
-        - プランは訪問順に、タイムスケジュールを含めてリスト形式で出力してください。
-        - 各移動区間では、(車)や(徒歩)のように移動手段を明記してください。
-        - なぜそのルートが最適だと判断したのか、理由を「ルートのポイント」として簡潔に一言で付け加えてください。
+【旅行情報】
+- 旅行開始日時: 2025年9月10日 09:00
+- 出発地: 東京駅
+- 行きたい場所: 上野動物園、浅草寺、スカイツリー
+
+【制約事項】
+- 出発地点（東京駅）から始めて、すべての目的地を巡ってください。
+- 各訪問地には適切な「滞在時間」（30〜90分）を設定してください。
+- 移動手段は「徒歩」または「車」のみを使用してください。
+- 各ステップのJSON内のキーの順番は **必ず以下の順序** にしてください：
+
+  1. "time"（例: "2025-09-10T09:00"）
+  2. "place"（訪問地名）
+  3. "duration"（滞在時間、例: "60分"）
+  4. "transportation"（徒歩 または 車）
+  5. "travel_time"（例: "15分"）
+
+- 最初のステップ（東京駅）は滞在時間0分、移動時間0分、交通手段は「徒歩」としてください。
+- 出力は**有効なJSON形式のみ**で、**他の文章や囲いは一切含めないこと**。
+
         """
         
         ai_response = await model.generate_content_async(prompt)
         return JSONResponse(content={"plan": ai_response.text})
 
     except Exception as e:
-        return JSONResponse(status_code=500, content={"message": f"An error occurred: {str(e)}"})
+        # エラーメッセージをより詳細に出力
+        print(f"ERROR: Exception type: {type(e).__name__}, Args: {e.args}") # 追加
+        return JSONResponse(status_code=500, content={"message": f"An error occurred: {type(e).__name__} - {e}"}) # 修正
 
 # --- AIパーキングアシスタント機能 (バグ修正版) ---
 @app.get("/nearby-parking/")
@@ -205,7 +242,7 @@ async def get_nearby_parking(lat: float = Query(...), lon: float = Query(...)):
         """
         
         ai_response = await model.generate_content_async(prompt)
-        return JSONResponse(content={"parking_lots": parking_lots, "advice": ai_response.text})
+        return JSONResponse(content={"plan": ai_response.text})
 
     except Exception as e:
         return JSONResponse(status_code=500, content={"message": f"An error occurred: {str(e)}"})
